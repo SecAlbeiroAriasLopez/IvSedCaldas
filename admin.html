@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Administrador | IVSECALDAS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+    <div class="container-fluid">
+        <a class="navbar-brand fw-bold" href="admin.html"><i class="bi bi-shield-lock-fill text-warning me-2"></i>IVSECALDAS | ADMIN</a>
+        <div class="collapse navbar-collapse">
+            <ul class="navbar-nav me-auto">
+                <li class="nav-item">
+                    <a class="nav-link active" href="admin.html"><i class="bi bi-table"></i> Administración Excel</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="documentos.html"><i class="bi bi-file-earmark-pdf-fill text-danger"></i> Carpeta PDF (IVSECALDAS)</a>
+                </li>
+            </ul>
+            <div class="d-flex align-items-center text-white gap-3">
+                <span class="badge bg-warning text-dark" id="badgeUser">ADMINISTRADOR</span>
+                <button class="btn btn-outline-success btn-sm" id="btnExportExcel">
+                    <i class="bi bi-file-earmark-excel"></i> Descargar .xlsx
+                </button>
+                <button class="btn btn-outline-light btn-sm" onclick="AuthSession.logout()">
+                    <i class="bi bi-box-arrow-right"></i> Salir
+                </button>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="mb-0 fw-bold">Gestión Integral: RegistroActasDeGrado.xlsx</h4>
+            <small class="text-muted">Control total sobre Graduados, Actas, Instituciones, Municipios y Usuarios</small>
+        </div>
+        <button class="btn btn-primary" id="btnNewRecord">
+            <i class="bi bi-plus-circle me-1"></i> Nuevo Registro
+        </button>
+    </div>
+
+    <!-- Pestañas de las 5 hojas del Excel -->
+    <ul class="nav nav-tabs mb-3" id="sheetTabs">
+        <li class="nav-item"><button class="nav-link active" data-sheet="Graduados">Graduados</button></li>
+        <li class="nav-item"><button class="nav-link" data-sheet="Actas">Actas</button></li>
+        <li class="nav-item"><button class="nav-link" data-sheet="Institucion">Institución</button></li>
+        <li class="nav-item"><button class="nav-link" data-sheet="Municipio">Municipio</button></li>
+        <li class="nav-item"><button class="nav-link" data-sheet="Usuarios">Usuarios</button></li>
+    </ul>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <div class="input-group w-50">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" id="searchInput" class="form-control" placeholder="Buscar en la hoja actual...">
+            </div>
+            <span class="text-muted small" id="recordCount">0 registros</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0" id="adminTable">
+                <thead class="table-dark" id="tableHead"></thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Crear / Editar Registro -->
+<div class="modal fade" id="recordModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalTitle">Registro</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="recordForm">
+                <div class="modal-body row g-3" id="modalFields"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="config.js"></script>
+<script>
+    const currentUser = AuthSession.requireAuth(['ADMINISTRADOR']);
+    if (currentUser) {
+        document.getElementById('badgeUser').textContent = `${currentUser.NOMBRE} (${currentUser.ROL})`;
+    }
+
+    const SHEET_SCHEMAS = {
+        Graduados: ['MUNICIPIO', 'CODDANE', 'IE', 'ESTUDIANTE', 'TIPO DI', 'NÚMERO DI', 'RESOLUCIÓN'],
+        Actas: ['NUMERO ACTA'],
+        Institucion: ['CODDANE', 'INSTITUCIÓN'],
+        Municipio: ['MUNICIPIO'],
+        Usuarios: ['NOMBRE', 'CLAVE', 'ROL', 'ESTADO']
+    };
+
+    let db = {};
+    let activeSheet = 'Graduados';
+    let editIndex = null;
+    const modalInstance = new bootstrap.Modal(document.getElementById('recordModal'));
+
+    async function init() {
+        db = await DataService.loadAllData();
+        renderTable();
+    }
+
+    document.querySelectorAll('#sheetTabs .nav-link').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#sheetTabs .nav-link').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeSheet = btn.dataset.sheet;
+            document.getElementById('searchInput').value = '';
+            renderTable();
+        });
+    });
+
+    document.getElementById('searchInput').addEventListener('input', renderTable);
+
+    function renderTable() {
+        const cols = SHEET_SCHEMAS[activeSheet];
+        const rows = db[activeSheet] || [];
+        const filter = document.getElementById('searchInput').value.toLowerCase();
+
+        const thead = document.getElementById('tableHead');
+        thead.innerHTML = `<tr>${cols.map(c => `<th>${c}</th>`).join('')}<th class="text-end">Acciones</th></tr>`;
+
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+
+        let visibleCount = 0;
+        rows.forEach((row, idx) => {
+            const match = cols.some(c => String(row[c] || '').toLowerCase().includes(filter));
+            if (!match) return;
+            visibleCount++;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                ${cols.map(c => `<td>${row[c] || ''}</td>`).join('')}
+                <td class="text-end text-nowrap">
+                    <button class="btn btn-sm btn-outline-primary me-1" onclick="openEdit(${idx})" title="Editar">
+                        <i class="bi bi-pencil-square"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRow(${idx})" title="Eliminar">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('recordCount').textContent = `${visibleCount} registros`;
+    }
+
+    function buildFormFields(rowData = {}) {
+        const cols = SHEET_SCHEMAS[activeSheet];
+        const container = document.getElementById('modalFields');
+        container.innerHTML = '';
+
+        cols.forEach(col => {
+            const val = rowData[col] || '';
+            let inputHtml = `<input type="text" class="form-control" name="${col}" value="${val}" required>`;
+
+            if (col === 'MUNICIPIO' && activeSheet !== 'Municipio') {
+                const options = (db.Municipio || []).map(m =>
+                    `<option value="${m.MUNICIPIO}" ${m.MUNICIPIO === val ? 'selected' : ''}>${m.MUNICIPIO}</option>`
+                ).join('');
+                inputHtml = `<select class="form-select" name="${col}" required><option value="">Seleccione...</option>${options}</select>`;
+            } else if (col === 'TIPO DI') {
+                const tipos = ['TI', 'CC', 'CE', 'PPT', 'RC', 'PEP'];
+                inputHtml = `<select class="form-select" name="${col}" required>
+                    ${tipos.map(t => `<option value="${t}" ${t === val ? 'selected' : ''}>${t}</option>`).join('')}
+                </select>`;
+            } else if (col === 'ROL') {
+                inputHtml = `<select class="form-select" name="${col}" required>
+                    <option value="OPERADOR" ${val === 'OPERADOR' ? 'selected' : ''}>OPERADOR</option>
+                    <option value="ADMINISTRADOR" ${val === 'ADMINISTRADOR' ? 'selected' : ''}>ADMINISTRADOR</option>
+                </select>`;
+            } else if (col === 'ESTADO') {
+                inputHtml = `<select class="form-select" name="${col}" required>
+                    <option value="ACTIVO" ${val === 'ACTIVO' ? 'selected' : ''}>ACTIVO</option>
+                    <option value="INACTIVO" ${val === 'INACTIVO' ? 'selected' : ''}>INACTIVO</option>
+                </select>`;
+            }
+
+            container.innerHTML += `
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">${col}</label>
+                    ${inputHtml}
+                </div>
+            `;
+        });
+    }
+
+    document.getElementById('btnNewRecord').addEventListener('click', () => {
+        editIndex = null;
+        document.getElementById('modalTitle').textContent = `Agregar en hoja: ${activeSheet}`;
+        buildFormFields({});
+        modalInstance.show();
+    });
+
+    window.openEdit = (idx) => {
+        editIndex = idx;
+        document.getElementById('modalTitle').textContent = `Editar registro en: ${activeSheet}`;
+        buildFormFields(db[activeSheet][idx]);
+        modalInstance.show();
+    };
+
+    window.deleteRow = async (idx) => {
+        if (!confirm('¿Está seguro de eliminar este registro permanentemente?')) return;
+        db[activeSheet].splice(idx, 1);
+        DataService.saveLocalDB(db);
+        await DataService.syncSheetToOneDrive(activeSheet, SHEET_SCHEMAS[activeSheet], db[activeSheet]);
+        renderTable();
+    };
+
+    document.getElementById('recordForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const obj = {};
+        SHEET_SCHEMAS[activeSheet].forEach(col => {
+            obj[col] = formData.get(col).trim();
+        });
+
+        if (editIndex === null) {
+            db[activeSheet].push(obj);
+        } else {
+            db[activeSheet][editIndex] = obj;
+        }
+
+        DataService.saveLocalDB(db);
+        await DataService.syncSheetToOneDrive(activeSheet, SHEET_SCHEMAS[activeSheet], db[activeSheet]);
+        modalInstance.hide();
+        renderTable();
+    });
+
+    // Descargar libro Excel completo en formato .xlsx real
+    document.getElementById('btnExportExcel').addEventListener('click', () => {
+        const wb = XLSX.utils.book_new();
+        Object.keys(SHEET_SCHEMAS).forEach(sheetName => {
+            const ws = XLSX.utils.json_to_sheet(db[sheetName] || [], { header: SHEET_SCHEMAS[sheetName] });
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        });
+        XLSX.writeFile(wb, 'RegistroActasDeGrado.xlsx');
+    });
+
+    init();
+</script>
+</body>
+</html>
