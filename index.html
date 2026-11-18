@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso - Gestión Actas de Grado | IVSECALDAS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-light d-flex align-items-center justify-content-center vh-100">
+
+    <div class="card shadow-lg border-0 login-card">
+        <div class="card-header bg-primary text-white text-center py-4">
+            <i class="bi bi-mortarboard-fill fs-1"></i>
+            <h4 class="mb-0 mt-2">Sistema de Actas de Grado</h4>
+            <small class="opacity-75">Carpeta OneDrive: IVSECALDAS</small>
+        </div>
+        <div class="card-body p-4">
+            <form id="loginForm">
+                <div class="mb-3">
+                    <label for="username" class="form-label fw-semibold">Nombre de Usuario</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-person"></i></span>
+                        <input type="text" class="form-control" id="username" placeholder="Ej: admin o operador1" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="password" class="form-label fw-semibold">Contraseña</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                        <input type="password" class="form-control" id="password" placeholder="••••••••" required>
+                    </div>
+                </div>
+                <div id="loginError" class="alert alert-danger d-none py-2 small" role="alert">
+                    Usuario o contraseña incorrectos.
+                </div>
+                <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">
+                    Ingresar al Sistema <i class="bi bi-box-arrow-in-right ms-1"></i>
+                </button>
+            </form>
+        </div>
+        <div class="card-footer text-center bg-white py-3">
+            <small class="text-muted">Usuarios de prueba:<br>
+                <b>Admin:</b> admin / admin123 | <b>Operador:</b> operador1 / op123
+            </small>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
